@@ -29,8 +29,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: ./infra/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: mcp-hub-backend
     command: uvicorn src.main:app --host ${API_HOST:-0.0.0.0} --port ${API_PORT:-8000} --reload
     ports:
@@ -40,7 +40,7 @@ services:
       REDIS_URL: redis://${REDIS_URL:-redis:6379}
       ENVIRONMENT: ${ENVIRONMENT:-development}
     volumes:
-      - .:/app
+      - ./backend:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,6 +48,25 @@ services:
         condition: service_healthy
     env_file:
       - .env
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mcp-hub-frontend
+    command: npm run dev
+    ports:
+      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"
+    environment:
+      PORT: ${FRONTEND_PORT:-3000}
+      BACKEND_INTERNAL_URL: http://backend:${API_PORT:-8000}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      backend:
+        condition: service_started
 
 volumes:
   postgres_data:
