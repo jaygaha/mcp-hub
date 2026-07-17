@@ -3,9 +3,13 @@ import { notFound } from "next/navigation";
 import { BACKEND_INTERNAL_URL } from "@/lib/config";
 import type {
   ApiErrorBody,
+  RatingSummaryResponse,
+  ReviewListResponse,
+  ReviewRead,
   ServerDetailResponse,
   ServerListParams,
   ServerListResponse,
+  UserRead,
 } from "@/lib/types";
 
 export class ApiError extends Error {
@@ -71,4 +75,75 @@ export async function getServerByNamespace(
   }
 
   return response.json() as Promise<ServerDetailResponse>;
+}
+
+// cookieHeader forwards the browser's access_token cookie so the backend
+// can identify the caller - a plain 401 means "not logged in", not an error.
+export async function getCurrentUser(cookieHeader: string): Promise<UserRead | null> {
+  const response = await fetch(`${BACKEND_INTERNAL_URL}/api/v1/auth/me`, {
+    headers: { Cookie: cookieHeader },
+    cache: "no-store",
+  });
+
+  if (response.status === 401) return null;
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status);
+  }
+
+  return response.json() as Promise<UserRead>;
+}
+
+export async function getRatingSummary(
+  namespace: string,
+  cookieHeader: string,
+): Promise<RatingSummaryResponse> {
+  const response = await fetch(`${BACKEND_INTERNAL_URL}/api/v1/servers/${namespace}/ratings`, {
+    headers: { Cookie: cookieHeader },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status);
+  }
+
+  return response.json() as Promise<RatingSummaryResponse>;
+}
+
+export async function getReviews(
+  namespace: string,
+  { skip, limit }: { skip?: number; limit?: number } = {},
+): Promise<ReviewListResponse> {
+  const query = new URLSearchParams();
+  if (skip !== undefined) query.set("skip", String(skip));
+  if (limit !== undefined) query.set("limit", String(limit));
+
+  const response = await fetch(
+    `${BACKEND_INTERNAL_URL}/api/v1/servers/${namespace}/reviews?${query.toString()}`,
+    { cache: "no-store" },
+  );
+
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status);
+  }
+
+  return response.json() as Promise<ReviewListResponse>;
+}
+
+// 401 (logged out) and 404 (logged in, hasn't reviewed yet) both mean
+// "nothing to pre-fill" - only a real backend failure should throw.
+export async function getMyReview(
+  namespace: string,
+  cookieHeader: string,
+): Promise<ReviewRead | null> {
+  const response = await fetch(`${BACKEND_INTERNAL_URL}/api/v1/servers/${namespace}/reviews/me`, {
+    headers: { Cookie: cookieHeader },
+    cache: "no-store",
+  });
+
+  if (response.status === 401 || response.status === 404) return null;
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status);
+  }
+
+  return response.json() as Promise<ReviewRead>;
 }

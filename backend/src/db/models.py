@@ -1,4 +1,5 @@
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import UniqueConstraint
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -87,6 +88,9 @@ class RatingBase(SQLModel):
 
 class Rating(RatingBase, table=True):
     __tablename__ = "ratings"
+    __table_args__ = (
+        UniqueConstraint("mcp_server_id", "user_id", name="uq_ratings_server_user"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     mcp_server_id: int = Field(foreign_key="mcp_servers.id")
@@ -105,6 +109,9 @@ class ReviewBase(SQLModel):
 
 class Review(ReviewBase, table=True):
     __tablename__ = "reviews"
+    __table_args__ = (
+        UniqueConstraint("mcp_server_id", "user_id", name="uq_reviews_server_user"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     mcp_server_id: int = Field(foreign_key="mcp_servers.id")

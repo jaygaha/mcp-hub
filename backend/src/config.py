@@ -20,9 +20,13 @@ class Settings(BaseSettings):
 
     github_client_id: Optional[str] = None
     github_client_secret: Optional[str] = None
+    github_redirect_uri: str = "http://localhost:8000/api/v1/auth/github/callback"
 
     jwt_secret: str = _DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
+
+    # Where /login and /logout send the browser back to after they're done.
+    frontend_url: str = "http://localhost:3000"
 
     # Required as an X-Admin-Token header on admin-only routes.
     admin_api_key: Optional[str] = None

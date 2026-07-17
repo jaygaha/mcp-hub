@@ -4,7 +4,7 @@ A discovery platform for MCP (Model Context Protocol) servers. It syncs from the
 
 ![MCP Hub homepage - search and browse MCP servers, dark mode](ui.png)
 
-This is early. The backend, registry sync, and a read-only frontend (search, browse, server detail) work end to end, but ratings, reviews, compatibility testing, and benchmarks are only modeled in the database so far - no write endpoints or UI for those yet.
+This is early. The backend, registry sync, and frontend (search, browse, server detail) work end to end. GitHub login, star ratings, and written reviews are live; compatibility testing and benchmarks are still only modeled in the database, with no write endpoints or UI for those yet.
 
 ## Stack
 
@@ -70,7 +70,18 @@ Tests run against those same containers, but not against your dev data. `backend
 
 The frontend has no test suite yet, just `make frontend-lint` and `cd frontend && npm run build` as a static-correctness gate (type errors, mainly).
 
+## Auth
+
+Ratings and reviews require logging in with GitHub. To enable it locally:
+
+1. Register an OAuth App at [github.com/settings/developers](https://github.com/settings/developers). The **Authorization callback URL** must exactly match `GITHUB_REDIRECT_URI` in your `.env`, including the port - e.g. `http://localhost:8000/api/v1/auth/github/callback` if you're using the default `API_PORT`.
+2. Put the app's client ID and secret in `.env` as `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+3. Restart the backend. "Log in with GitHub" in the header will now complete a real login instead of failing.
+
+The session is a JWT in an httpOnly cookie, minted by the backend after the GitHub OAuth handshake. Login, callback, and logout are plain top-level redirects (not fetch calls), so they don't need `BACKEND_INTERNAL_URL` - the frontend uses a separate, intentionally public `NEXT_PUBLIC_BACKEND_URL` just for those links.
+
 ## Not built yet
 
-- Ratings, reviews, compatibility, and benchmark endpoints (the tables exist, nothing serves them, and the frontend shows explicit empty states for them)
-- Any auth beyond the admin token on the sync endpoint
+- Compatibility and benchmark endpoints (the tables exist, nothing serves them, and the frontend shows explicit empty states for them)
+- Rate-limiting or content moderation on ratings/reviews
+- JWT refresh - sessions hard-expire after 30 days

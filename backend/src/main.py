@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.api import servers
+from src.api import auth, reviews, servers
 from src.db.session import init_db
 from src.config import settings
 import logging
@@ -33,6 +33,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+# reviews.router must be registered before servers.router: both declare
+# routes under /servers/{namespace:path}, and FastAPI/Starlette matches in
+# registration order - servers.py's bare GET would otherwise backtrack its
+# `.*` and silently swallow "<namespace>/ratings" as part of the namespace.
+app.include_router(reviews.router)
 app.include_router(servers.router)
 
 
