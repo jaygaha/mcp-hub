@@ -21,21 +21,26 @@ Found while re-running `make sync-registry` on 2026-07-15 after fixing the 429/r
 
 ## Server detail page 404s return HTTP 200
 
-`GET /servers/<unknown-namespace>` on the frontend renders the correct
-not-found UI (verified), but the actual HTTP status code is 200, not 404.
-This is documented Next.js behavior, not a bug in this app: the root
-layout has no data dependency, so the App Router starts streaming the
-response shell (locking in a 200) before `notFound()` - called after
-`await getServerByNamespace(...)` - can run. Once streaming starts, the
-status code can't change; Next.js compensates by injecting a `noindex`
-meta tag automatically, so search engines don't index these URLs despite
-the 200.
+`GET /servers/<unknown-namespace>` on the frontend renders the correct not-found UI (verified), but the actual HTTP status code is 200, not 404. This is documented Next.js behavior, not a bug in this app: the root layout has no data dependency, so the App Router starts streaming the response shell (locking in a 200) before `notFound()` - called after `await getServerByNamespace(...)` - can run. Once streaming starts, the status code can't change; Next.js compensates by injecting a `noindex` meta tag automatically, so search engines don't index these URLs despite the 200.
 
-This only matters if something checks the raw status code (uptime
-monitors, non-browser API-style consumers of these HTML pages). The
-documented fix is to pre-check existence in `proxy` (this version's name
-for middleware) before the page ever renders, returning a real 404 there
-- but that means an extra backend round trip on every detail-page view
-to buy a correct status code on the (currently nonexistent-server) error
-path. Not worth it yet; revisit if something downstream actually needs
-the real status code.
+This only matters if something checks the raw status code (uptime monitors, non-browser API-style consumers of these HTML pages). The documented fix is to pre-check existence in `proxy` (this version's name for middleware) before the page ever renders, returning a real 404 there - but that means an extra backend round trip on every detail-page view to buy a correct status code on the (currently nonexistent-server) error path. Not worth it yet; revisit if something downstream actually needs the real status code.
+
+## Auth cookie assumes same-domain-different-port deployment
+
+The GitHub OAuth session cookie relies on cookie scoping ignoring port (RFC 6265) - a cookie set by the backend on `localhost` is automatically visible to the frontend on a different `localhost` port in local dev, so no cross-origin cookie configuration was needed for Day 3. This breaks once frontend and backend sit on genuinely different domains in a real deployment (not just different ports), which will need explicit cookie-domain / reverse-proxy configuration. Not addressed since there's no production deployment yet (see the frontend-Docker-image entry above).
+
+## No rating/review moderation, rate-limiting, or JWT refresh
+
+Any authenticated GitHub account can rate or review a server with no throttling and no content checks beyond the 1-5 score bound and a length cap on review text - matches the original planning doc's own depth, not fixed here. Sessions hard-expire 30 days after login (no refresh-token flow), so that's a full re-login, not a silent extension.
+
+## `Review.helpful_count` stays inert
+
+The column exists (from Day 1's model scaffolding) but nothing increments it - no helpfulness-voting endpoint was built, since it was never in the original plan beyond a bare field.
+
+## `SiteHeader` reading the auth cookie forces every route dynamic
+
+Checking the login cookie via `next/headers` in the header (used on every page) opts every route, including the homepage, out of static rendering - there's no partial-prerendering flag enabled in `next.config.ts` to let the static shell and the dynamic auth check coexist. Matches this app's existing reality that most routes already fetch with `cache: "no-store"`; revisit only if homepage load time becomes a real concern.
+
+## GitHub username rename can collide on login
+
+`users.username` is unique; if a GitHub user renames to a name some other local account already has, `get_or_create_user` will raise on commit instead of resolving the conflict. Rare, unhandled.

@@ -73,3 +73,48 @@ export interface ServerListParams {
 export interface ApiErrorBody {
   detail: string;
 }
+
+export interface UserRead {
+  id: number;
+  username: string;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+export interface RatingCreate {
+  score: number;
+}
+
+export interface RatingDistributionBucket {
+  score: number;
+  count: number;
+}
+
+export interface RatingSummaryResponse {
+  average_score: number;
+  total_ratings: number;
+  distribution: RatingDistributionBucket[];
+  my_score: number | null;
+}
+
+export interface ReviewCreate {
+  title: string;
+  content: string;
+}
+
+export interface ReviewRead {
+  id: number;
+  title: string;
+  content: string;
+  helpful_count: number;
+  created_at: string;
+  updated_at: string;
+  author_username: string;
+  author_avatar_url: string | null;
+}
+
+export interface ReviewListResponse {
+  status: string;
+  data: ReviewRead[];
+  pagination: PaginationInfo;
+}
