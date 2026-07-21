@@ -44,3 +44,11 @@ Checking the login cookie via `next/headers` in the header (used on every page) 
 ## GitHub username rename can collide on login
 
 `users.username` is unique; if a GitHub user renames to a name some other local account already has, `get_or_create_user` will raise on commit instead of resolving the conflict. Rare, unhandled.
+
+## No test-execution engine behind compatibility/benchmarks
+
+`POST .../compatibility` and `.../test-results` (backend/src/api/benchmarks.py) just record whatever the caller sends - nothing in this codebase actually pulls a server's `docker_image` and runs it to produce these numbers. That's a much larger, riskier undertaking (executing untrusted third-party code) and was intentionally left out of scope. These endpoints exist for a human or a future separate test-runner to report results into.
+
+## Compatibility client set is coupled to the frontend
+
+`CompatibilityCreate.client` is a `Literal["claude", "cursor", "vscode"]` (backend/src/api/schemas.py), matching `KNOWN_CLIENTS` hardcoded in `frontend/src/components/servers/compatibility-matrix.tsx`. Adding a fourth client means updating both together - there's no shared source of truth for the client list today.

@@ -4,7 +4,7 @@ A discovery platform for MCP (Model Context Protocol) servers. It syncs from the
 
 ![MCP Hub homepage - search and browse MCP servers, dark mode](ui.png)
 
-This is early. The backend, registry sync, and frontend (search, browse, server detail) work end to end. GitHub login, star ratings, and written reviews are live; compatibility testing and benchmarks are still only modeled in the database, with no write endpoints or UI for those yet.
+This is early. The backend, registry sync, and frontend (search, browse, server detail) work end to end. GitHub login, star ratings, written reviews, and compatibility/benchmark data are all live.
 
 ## Stack
 
@@ -47,7 +47,7 @@ make frontend-install
 make frontend-dev
 ```
 
-The frontend fetches the backend directly from Server Components at request time - there's no API proxy layer, and no client-side code ever calls the backend (nothing in a `"use client"` file imports the data layer). `BACKEND_INTERNAL_URL` is server-only and never reaches the browser. Ratings, test results, and compatibility on the server detail page show honest "not available yet" states, since the backend has no write endpoints for them yet.
+The frontend fetches the backend directly from Server Components at request time - there's no API proxy layer, and no client-side code ever calls the backend (nothing in a `"use client"` file imports the data layer). `BACKEND_INTERNAL_URL` is server-only and never reaches the browser.
 
 ## Syncing the registry
 
@@ -58,6 +58,22 @@ make sync-registry
 This walks every page of the official registry and upserts each server into Postgres, keeping only the latest version when the registry lists more than one. It retries on timeouts and 429s (honoring `Retry-After`), and paces requests to avoid the registry's rate limit. Against the real registry that's currently ~16,700 servers, so a full sync takes fifteen to twenty minutes, mostly waiting on Postgres round trips (see TODO.md).
 
 It's admin-only: `.env.example` ships a placeholder `ADMIN_API_KEY`, sent back as an `X-Admin-Token` header via `make sync-registry`. Change it before running this anywhere that isn't your own machine. With no key configured at all, the endpoint refuses everyone with a 503 rather than staying open.
+
+## Recording compatibility and benchmark results
+
+Nothing in this app actually runs an MCP server to test it - `Compatibility` and `TestResult` are admin-submitted records of results produced elsewhere (manually, or by a separate test-runner). Same `X-Admin-Token` as above:
+
+```bash
+curl -X POST http://localhost:$API_PORT/api/v1/servers/<namespace>/compatibility \
+  -H "X-Admin-Token: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"client":"claude","compatible":true}'
+
+curl -X POST http://localhost:$API_PORT/api/v1/servers/<namespace>/test-results \
+  -H "X-Admin-Token: $ADMIN_API_KEY" -H "Content-Type: application/json" \
+  -d '{"version":"1.0.0","speed_ms":120,"memory_mb":64,"success_rate":0.95,"error_count":1}'
+```
+
+Compatibility is an upsert - one row per server/client, re-testing replaces the previous result. Test results are historical - each call appends a new row, and the server detail page shows the 5 most recent per server. `client` is limited to `claude`, `cursor`, or `vscode`, matching the frontend's compatibility matrix.
 
 ## Tests
 
@@ -82,6 +98,6 @@ The session is a JWT in an httpOnly cookie, minted by the backend after the GitH
 
 ## Not built yet
 
-- Compatibility and benchmark endpoints (the tables exist, nothing serves them, and the frontend shows explicit empty states for them)
+- An actual test-execution engine - compatibility/benchmark results are admin-submitted, nothing here runs an MCP server to produce them
 - Rate-limiting or content moderation on ratings/reviews
 - JWT refresh - sessions hard-expire after 30 days

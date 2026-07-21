@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -110,6 +110,19 @@ class ReviewListResponse(BaseModel):
     status: str
     data: List[ReviewRead]
     pagination: PaginationInfo
+
+
+class CompatibilityCreate(BaseModel):
+    client: Literal["claude", "cursor", "vscode"]
+    compatible: bool
+
+
+class TestResultCreate(BaseModel):
+    version: str
+    speed_ms: float = Field(ge=0)
+    memory_mb: float = Field(ge=0)
+    success_rate: float = Field(ge=0, le=1)
+    error_count: int = Field(ge=0)
 
 
 class SyncRegistryResponse(BaseModel):
