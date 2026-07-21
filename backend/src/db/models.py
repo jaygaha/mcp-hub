@@ -40,6 +40,9 @@ class CompatibilityBase(SQLModel):
 
 class Compatibility(CompatibilityBase, table=True):
     __tablename__ = "compatibilities"
+    __table_args__ = (
+        UniqueConstraint("mcp_server_id", "client", name="uq_compatibility_server_client"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     mcp_server_id: int = Field(foreign_key="mcp_servers.id")
