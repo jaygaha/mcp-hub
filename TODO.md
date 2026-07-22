@@ -1,19 +1,10 @@
 # TODO
 
-## Registry sync: one giant transaction + N+1 queries
+## Registry sync is now fetch-bound, not DB-bound
 
-`RegistryScraper.sync_all_servers` (backend/src/services/registry_scraper.py) does one SELECT-then-INSERT/UPDATE per server, all inside a single session that only commits at the very end. Against the real registry (currently ~16.7k servers) that's ~33k round trips to Postgres in one transaction, and the run takes about 20 minutes.
+`RegistryScraper.sync_all_servers` used to do one SELECT-then-INSERT/UPDATE per server in a single un-batched transaction (~33k round trips for ~16.7k servers). Fixed: upserts are now chunked (`_BATCH_SIZE = 500`, `INSERT ... ON CONFLICT DO UPDATE`), committing per batch - a benchmark against 5,000 synthetic servers (mocked registry response, real Postgres) wrote all of them in under a second, so the DB side of a full sync is now on the order of a few seconds, not ~20 minutes.
 
-It works, but:
-- Nothing is visible in the table until the very last commit - no
-  incremental progress, and a crash mid-run loses everything.
-- Holding one transaction open that long isn't great for Postgres (locks,
-  bloat).
-- All those round trips are the real bottleneck, not the registry HTTP calls.
-
-Fix would be something like: batch the upserts (`INSERT ... ON CONFLICT DO UPDATE`, chunked), and commit per batch instead of once at the end.
-
-Found while re-running `make sync-registry` on 2026-07-15 after fixing the 429/rate-limit issue - the full sync finally completed (created: 16702, updated: 0), which is what surfaced this.
+Verified live on 2026-07-21: re-running `make sync-registry` against the real registry took well over 10 minutes, but the entire time was spent in `_fetch_latest_servers` (paginating the real registry over the network, `_PAGE_DELAY_SECONDS = 0.2` between pages) - the DB-write phase was never the thing running long during that call. So the next bottleneck, if a full sync's wall-clock time matters again, is the fetch phase (page count and network latency), not Postgres. Not addressed here - out of scope for the batching fix, and the registry's own pagination/rate-limit behavior isn't something this app controls.
 
 ## Frontend Docker image is dev-only
 

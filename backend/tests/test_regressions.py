@@ -304,6 +304,81 @@ def test_sync_keeps_only_the_latest_version_per_namespace(monkeypatch):
     assert server["description"] == "new"
 
 
+def test_sync_processes_multiple_batches_correctly(monkeypatch):
+    """Upserts are chunked (registry_scraper._BATCH_SIZE); a sync spanning
+    several batches must still create every server and report an accurate
+    total, not just whatever fits in the first chunk."""
+    monkeypatch.setattr(scraper_module, "_BATCH_SIZE", 2)
+    payload = {
+        "servers": [
+            {"server": {"name": f"audit.fixture/batch-{i}"}} for i in range(5)
+        ],
+        "metadata": {"count": 5},
+    }
+
+    def handler(request):
+        return httpx2.Response(200, json=payload)
+
+    monkeypatch.setattr(
+        scraper_module.httpx2, "AsyncClient", _mock_client_factory(handler)
+    )
+
+    result = _run(_run_sync_all_servers)
+
+    assert result["status"] == "success"
+    assert result["created"] == 5
+    assert result["updated"] == 0
+    assert result["total"] == 5
+
+    with TestClient(app) as client:
+        for i in range(5):
+            resp = client.get(f"/api/v1/servers/audit.fixture/batch-{i}")
+            assert resp.status_code == 200
+
+
+def test_sync_upserts_existing_servers_across_batches(monkeypatch):
+    """A second sync over servers that already exist must update them in
+    place (batched upsert), not create duplicates or skip later batches."""
+    monkeypatch.setattr(scraper_module, "_BATCH_SIZE", 2)
+    namespaces = [f"audit.fixture/upsert-{i}" for i in range(5)]
+    current_description = "first pass"
+
+    def make_payload():
+        return {
+            "servers": [
+                {"server": {"name": ns, "description": current_description}}
+                for ns in namespaces
+            ],
+            "metadata": {"count": 5},
+        }
+
+    def handler(request):
+        return httpx2.Response(200, json=make_payload())
+
+    # _mock_client_factory captures httpx2.AsyncClient at call time, so it
+    # can only be applied once per test - a second call would wrap the
+    # first mock instead of the real client. Swapping current_description
+    # (read by `handler` on every call) lets one patch serve both syncs.
+    monkeypatch.setattr(
+        scraper_module.httpx2, "AsyncClient", _mock_client_factory(handler)
+    )
+    first_result = _run(_run_sync_all_servers)
+    assert first_result["created"] == 5
+    assert first_result["updated"] == 0
+
+    current_description = "second pass"
+    second_result = _run(_run_sync_all_servers)
+
+    assert second_result["status"] == "success"
+    assert second_result["created"] == 0
+    assert second_result["updated"] == 5
+    assert second_result["total"] == 5
+
+    with TestClient(app) as client:
+        resp = client.get(f"/api/v1/servers/{namespaces[0]}")
+    assert resp.json()["data"]["server"]["description"] == "second pass"
+
+
 def test_get_server_response_matches_dto_shape_with_populated_relations():
     """The dedicated response DTOs (not response_model=dict) must correctly
     serialize a server with real test results, compatibilities and
