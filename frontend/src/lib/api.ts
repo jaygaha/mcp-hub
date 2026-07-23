@@ -43,6 +43,8 @@ export async function getServers(
   if (params.sort) query.set("sort", params.sort);
   if (params.limit !== undefined) query.set("limit", String(params.limit));
   if (params.skip !== undefined) query.set("skip", String(params.skip));
+  if (params.min_rating !== undefined) query.set("min_rating", String(params.min_rating));
+  if (params.client) query.set("client", params.client);
 
   const response = await fetch(
     `${BACKEND_INTERNAL_URL}/api/v1/servers?${query.toString()}`,

@@ -6,7 +6,7 @@ import type { CompatibilityClient } from "@/lib/types";
 
 type CompatibilityStatus = "compatible" | "incompatible" | "untested";
 
-const CLIENT_LABELS: Record<CompatibilityClient, string> = {
+export const CLIENT_LABELS: Record<CompatibilityClient, string> = {
   claude: "Claude",
   cursor: "Cursor",
   vscode: "VS Code",

@@ -54,6 +54,35 @@ async def _run_sync_all_servers(db_factory=AsyncSessionLocal):
         return await RegistryScraper().sync_all_servers(db)
 
 
+async def _seed_rated_server(namespace, name, scores, compat_client=None, compat_compatible=None):
+    """One server rated by `len(scores)` distinct users (one rating each -
+    the unique constraint is per user, so scoring twice needs two users),
+    plus an optional single Compatibility row."""
+    from src.db.models import Compatibility, MCPServer, Rating, User
+
+    await init_db()
+    async with AsyncSessionLocal() as db:
+        server = MCPServer(namespace=namespace, name=name)
+        db.add(server)
+        await db.flush()
+
+        for i, score in enumerate(scores):
+            user = User(github_id=f"{namespace}-user-{i}", username=f"{namespace.replace('/', '-')}-user-{i}")
+            db.add(user)
+            await db.flush()
+            db.add(Rating(mcp_server_id=server.id, user_id=user.id, score=score))
+
+        if compat_client is not None:
+            db.add(
+                Compatibility(
+                    mcp_server_id=server.id, client=compat_client, compatible=compat_compatible
+                )
+            )
+
+        await db.commit()
+        return server.id
+
+
 async def _seed_full_detail(namespace):
     from src.db.models import Compatibility, MCPServer, Rating, TestResult, User
 
@@ -104,6 +133,72 @@ def test_list_servers_total_matches_namespace_only_search():
     data = resp.json()
     assert len(data["data"]) == 1
     assert data["pagination"]["total"] == 1
+
+
+def test_list_servers_filters_by_min_rating():
+    """A server with no ratings has a NULL average, which must fail a
+    min_rating comparison (be excluded), not error or false-match."""
+    _run(_seed_rated_server, "audit.rating/high", "High Rated", [5, 4])
+    _run(_seed_rated_server, "audit.rating/unrated", "Unrated", [])
+
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/servers", params={"min_rating": 4})
+
+    data = resp.json()["data"]
+    namespaces = {s["namespace"] for s in data}
+    assert namespaces == {"audit.rating/high"}
+
+
+def test_list_servers_filters_by_compatibility_client():
+    _run(
+        _seed_rated_server,
+        "audit.compat/compatible",
+        "Compatible",
+        [],
+        compat_client="claude",
+        compat_compatible=True,
+    )
+    _run(
+        _seed_rated_server,
+        "audit.compat/incompatible",
+        "Incompatible",
+        [],
+        compat_client="claude",
+        compat_compatible=False,
+    )
+
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/servers", params={"client": "claude"})
+
+    namespaces = {s["namespace"] for s in resp.json()["data"]}
+    assert namespaces == {"audit.compat/compatible"}
+
+
+def test_list_servers_sorts_by_rating():
+    _run(_seed_rated_server, "audit.sort/low", "Low", [2])
+    _run(_seed_rated_server, "audit.sort/high", "High", [5])
+    _run(_seed_rated_server, "audit.sort/mid", "Mid", [3])
+
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/servers", params={"sort": "rating"})
+
+    namespaces = [s["namespace"] for s in resp.json()["data"]]
+    assert namespaces.index("audit.sort/high") < namespaces.index("audit.sort/mid")
+    assert namespaces.index("audit.sort/mid") < namespaces.index("audit.sort/low")
+
+
+def test_list_servers_response_includes_rating_fields():
+    _run(_seed_rated_server, "audit.fields/rated", "Rated", [5, 3])
+    _run(_seed_rated_server, "audit.fields/unrated", "Unrated", [])
+
+    with TestClient(app) as client:
+        resp = client.get("/api/v1/servers")
+
+    by_namespace = {s["namespace"]: s for s in resp.json()["data"]}
+    assert by_namespace["audit.fields/rated"]["average_rating"] == 4.0
+    assert by_namespace["audit.fields/rated"]["total_ratings"] == 2
+    assert by_namespace["audit.fields/unrated"]["average_rating"] == 0
+    assert by_namespace["audit.fields/unrated"]["total_ratings"] == 0
 
 
 def test_sync_handles_dict_shaped_repository_and_website_url(monkeypatch):

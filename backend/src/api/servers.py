@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from src.api.schemas import (
+    CompatibilityClient,
     HealthResponse,
     ServerDetailResponse,
     ServerListResponse,
@@ -32,12 +33,16 @@ async def require_admin(x_admin_token: Optional[str] = Header(None)) -> None:
 @router.get("/servers", response_model=ServerListResponse)
 async def list_servers(
     search: Optional[str] = Query(None, description="Search by name or description"),
-    sort: str = Query("popular", description="Sort by: popular, newest, trending"),
+    sort: str = Query("popular", description="Sort by: popular, newest, trending, rating"),
+    min_rating: Optional[float] = Query(None, ge=1, le=5),
+    client: Optional[CompatibilityClient] = Query(
+        None, description="Only servers marked compatible with this client"
+    ),
     limit: int = Query(20, ge=1, le=100),
     skip: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    """List MCP servers with search, sort, and pagination."""
+    """List MCP servers with search, sort, filtering, and pagination."""
     try:
         search_clause = None
         if search:
@@ -48,11 +53,45 @@ async def list_servers(
                 | MCPServer.namespace.ilike(search_term)
             )
 
-        query = select(MCPServer)
+        avg_rating_expr = (
+            select(func.avg(Rating.score))
+            .where(Rating.mcp_server_id == MCPServer.id)
+            .correlate(MCPServer)
+            .scalar_subquery()
+        )
+        rating_count_expr = (
+            select(func.count(Rating.id))
+            .where(Rating.mcp_server_id == MCPServer.id)
+            .correlate(MCPServer)
+            .scalar_subquery()
+        )
+
+        query = select(MCPServer, avg_rating_expr, rating_count_expr)
         count_query = select(func.count(MCPServer.id))
+
         if search_clause is not None:
             query = query.where(search_clause)
             count_query = count_query.where(search_clause)
+
+        if min_rating is not None:
+            # A server with no ratings has a NULL average, which fails this
+            # comparison in SQL - correctly excluded rather than erroring.
+            query = query.where(avg_rating_expr >= min_rating)
+            count_query = count_query.where(avg_rating_expr >= min_rating)
+
+        if client is not None:
+            compat_exists = (
+                select(Compatibility.id)
+                .where(
+                    Compatibility.mcp_server_id == MCPServer.id,
+                    Compatibility.client == client,
+                    Compatibility.compatible.is_(True),
+                )
+                .correlate(MCPServer)
+                .exists()
+            )
+            query = query.where(compat_exists)
+            count_query = count_query.where(compat_exists)
 
         if sort == "newest":
             query = query.order_by(MCPServer.created_at.desc())
@@ -70,20 +109,33 @@ async def list_servers(
             query = query.order_by(
                 recent_rating_count.desc(), MCPServer.updated_at.desc()
             )
+        elif sort == "rating":
+            # Postgres sorts NULL first in DESC order by default, which would
+            # otherwise put every unrated server at the top of this sort.
+            query = query.order_by(
+                avg_rating_expr.desc().nulls_last(), MCPServer.id.desc()
+            )
         else:  # popular
             query = query.order_by(MCPServer.id.desc())
 
         query = query.offset(skip).limit(limit)
 
         result = await db.execute(query)
-        servers = result.scalars().all()
+        rows = result.all()
 
         count_result = await db.execute(count_query)
         total = count_result.scalar()
 
         return {
             "status": "success",
-            "data": servers,
+            "data": [
+                {
+                    **server.model_dump(),
+                    "average_rating": round(avg_rating or 0, 1),
+                    "total_ratings": rating_count or 0,
+                }
+                for server, avg_rating, rating_count in rows
+            ],
             "pagination": {
                 "skip": skip,
                 "limit": limit,
