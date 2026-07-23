@@ -15,6 +15,11 @@ export interface ServerRead {
   updated_at: string;
 }
 
+export interface ServerListItem extends ServerRead {
+  average_rating: number;
+  total_ratings: number;
+}
+
 export interface PaginationInfo {
   skip: number;
   limit: number;
@@ -23,7 +28,7 @@ export interface PaginationInfo {
 
 export interface ServerListResponse {
   status: string;
-  data: ServerRead[];
+  data: ServerListItem[];
   pagination: PaginationInfo;
 }
 
@@ -60,13 +65,15 @@ export interface ServerDetailResponse {
   data: ServerDetailData;
 }
 
-export type SortOption = "popular" | "newest" | "trending";
+export type SortOption = "popular" | "newest" | "trending" | "rating";
 
 export interface ServerListParams {
   search?: string;
   sort?: SortOption;
   limit?: number;
   skip?: number;
+  min_rating?: number;
+  client?: CompatibilityClient;
 }
 
 // FastAPI's default HTTPException body shape.

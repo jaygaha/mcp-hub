@@ -16,6 +16,7 @@ const SORT_LABELS: Record<SortOption, string> = {
   popular: "Popular",
   newest: "Newest",
   trending: "Trending",
+  rating: "Top rated",
 };
 
 export function ServerSortSelect() {

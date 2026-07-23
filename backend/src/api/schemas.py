@@ -3,6 +3,8 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+CompatibilityClient = Literal["claude", "cursor", "vscode"]
+
 
 class ServerRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -20,6 +22,11 @@ class ServerRead(BaseModel):
     updated_at: datetime
 
 
+class ServerListItem(ServerRead):
+    average_rating: float
+    total_ratings: int
+
+
 class PaginationInfo(BaseModel):
     skip: int
     limit: int
@@ -28,7 +35,7 @@ class PaginationInfo(BaseModel):
 
 class ServerListResponse(BaseModel):
     status: str
-    data: List[ServerRead]
+    data: List[ServerListItem]
     pagination: PaginationInfo
 
 
@@ -113,7 +120,7 @@ class ReviewListResponse(BaseModel):
 
 
 class CompatibilityCreate(BaseModel):
-    client: Literal["claude", "cursor", "vscode"]
+    client: CompatibilityClient
     compatible: bool
 
 

@@ -1,7 +1,7 @@
 import { ServerCard } from "@/components/servers/server-card";
-import type { ServerRead } from "@/lib/types";
+import type { ServerListItem } from "@/lib/types";
 
-export function ServerGrid({ servers }: { servers: ServerRead[] }) {
+export function ServerGrid({ servers }: { servers: ServerListItem[] }) {
   // Empty-state copy lives in ResultsSummary, which every caller of this
   // grid already renders alongside it - no need to say "no results" twice.
   if (servers.length === 0) return null;
